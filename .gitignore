@@ -1,0 +1,44 @@
+# ==========================================
+# Code::Blocks Specific Files
+# ==========================================
+# Layout file (stores your open tabs and window positions - highly user-specific)
+*.layout
+
+# Project depend files (temporary compiler dependency tracking)
+*.depend
+
+# ==========================================
+# C++ Compiled Binaries and Objects
+# ==========================================
+*.exe
+*.out
+*.app
+*.o
+*.obj
+*.pdb
+
+# ==========================================
+# Code::Blocks Default Build Folders
+# ==========================================
+bin/
+obj/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+*.log
+
+# ==========================================
+# OpenGL / FreeGLUT Dependencies
+# ==========================================
+# Prevents heavy compiled libraries from flooding the repo
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+
+# ==========================================
+# Operating System Files
+# ==========================================
+.DS_Store
+Thumbs.db
