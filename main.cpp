@@ -16,6 +16,9 @@ float animationTime = 0.0f;
 float animationSpeed = 1.0f;
 
 
+bool interactionsEnabled = true;
+
+
 struct Vec3 {
     float x, y, z;
 };
@@ -81,7 +84,7 @@ void init() {
     robots[1].position.x = 0.0f;
     robots[1].position.z = 1.0f;
     robots[1].position.y = surfaceHeight(robots[1].position.x, robots[1].position.z) + 1.225f;
-    robots[1].pathT = 0.3f;
+    robots[1].pathT = 0.5f;
     robots[1].speed = 0.8f;
     robots[1].heading = -20.0f;
     robots[1].walking = true;
@@ -91,7 +94,7 @@ void init() {
     robots[2].position.x = 3.0f;
     robots[2].position.z = -0.5f;
     robots[2].position.y = surfaceHeight(robots[2].position.x, robots[2].position.z) + 1.225f;
-    robots[2].pathT = 0.6f;
+    robots[2].pathT = 0.75f;
     robots[2].speed = 1.2f;
     robots[2].heading = -45.0f;
     robots[2].walking = true;
@@ -115,6 +118,7 @@ void init() {
     std::cout << "ESC - exit\n";
     std::cout << "W - start/stop animation\n";
     std::cout << "+ / - change speed\n";
+    std::cout << "I - enable/disable interactions\n";
 }
 
 
@@ -511,7 +515,70 @@ void drawRobot(const RobotState& robot)
 }
 
 
+float distanceXZ(const Vec3& a, const Vec3& b) {
+    float dx = a.x - b.x;
+    float dz = a.z - b.z;
+    return sqrtf(dx * dx + dz * dz);
+}
+
+
+void handleRobotInteractions() {
+    robots[0].waving = false;
+    robots[1].waving = false;
+    robots[2].waving = false;
+
+    robots[0].speed = 1.0f;
+    robots[1].speed = 0.8f;
+    robots[2].speed = 1.2f;
+
+    robots[0].behaviorState = 0;
+    robots[1].behaviorState = 0;
+    robots[2].behaviorState = 0;
+
+    if (!interactionsEnabled) {
+        return;
+    }
+
+    float d01 = distanceXZ(robots[0].position, robots[1].position);
+    float d12 = distanceXZ(robots[1].position, robots[2].position);
+    float d02 = distanceXZ(robots[0].position, robots[2].position);
+
+    // Interaction 1: Robot 0 and Robot 1 greet
+    if (d01 < 2.4f) {
+    robots[0].waving = true;
+    robots[1].waving = true;
+
+    robots[0].speed = 0.0f;
+    robots[1].speed = 0.8f;
+
+    robots[0].behaviorState = 1;
+    robots[1].behaviorState = 1;
+    }
+
+    // Interaction 2: Robot 1 avoids Robot 2
+    if (d12 < 2.8f) {
+    robots[1].speed = 0.0f;
+    robots[2].speed = 1.2f;
+
+    robots[1].waving = true;
+    robots[2].waving = true;
+
+    robots[1].behaviorState = 2;
+    robots[2].behaviorState = 2;
+    }
+
+    // Extra safety: avoid Robot 0 and Robot 2 overlapping
+    if (d02 < 2.2f) {
+    robots[0].speed = 0.0f;
+    robots[2].speed = 1.2f;
+    }
+}
+
+
 void updateRobots(float dt) {
+
+    handleRobotInteractions();
+
     for (int i = 0; i < 3; i++) {
         if (!robots[i].walking) {
             continue;
@@ -533,11 +600,7 @@ void updateRobots(float dt) {
 
         robots[i].heading = radiansToDegrees(atan2f(dx, dz));
     }
-}
 
-
-void handleRobotInteractions() {
-    // Will be implemented later
 }
 
 
@@ -560,6 +623,16 @@ void drawAxes() {
 }
 
 
+void drawText(float x, float y, float z, const char* text) {
+    glRasterPos3f(x, y, z);
+
+    while (*text) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *text);
+        text++;
+    }
+}
+
+
 void drawScene() {
     drawAxes();
 
@@ -570,7 +643,25 @@ void drawScene() {
     drawPath(2);
 
     for (int i = 0; i < 3; i++) {
-        drawRobot(robots[i]);
+    drawRobot(robots[i]);
+
+    if (i == 0)
+        glColor3f(1.0f, 0.0f, 0.0f);
+    else if (i == 1)
+        glColor3f(0.0f, 1.0f, 0.0f);
+    else
+        glColor3f(0.0f, 0.5f, 1.0f);
+
+    float tx = robots[i].position.x;
+    float ty = robots[i].position.y + 2.8f + i * 0.25f;
+    float tz = robots[i].position.z;
+
+    if (i == 0)
+        drawText(tx, ty, tz, "Robot 0");
+    else if (i == 1)
+        drawText(tx, ty, tz, "Robot 1");
+    else
+        drawText(tx, ty, tz, "Robot 2");
     }
 }
 
@@ -615,6 +706,11 @@ void keyboard(unsigned char key, int x, int y) {
         case '-':
             animationSpeed -= 0.2f;
             if (animationSpeed < 0.2f) animationSpeed = 0.2f;
+            break;
+
+        case 'i':
+        case 'I':
+            interactionsEnabled = !interactionsEnabled;
             break;
     }
 
