@@ -10,6 +10,9 @@ float cameraDistance = 12.0f;
 float cameraAngleX = 25.0f;
 float cameraAngleY = -35.0f;
 
+int cameraMode = 4;
+bool usePerspective = true;
+
 
 bool animationRunning = true;
 float animationTime = 0.0f;
@@ -17,6 +20,18 @@ float animationSpeed = 1.0f;
 
 
 bool interactionsEnabled = true;
+
+int lightingMode = 0;
+bool lightingEnabled = true;
+
+
+GLuint terrainTexture;
+GLuint robotTexture;
+bool texturesEnabled = true;
+
+bool mouseDragging = false;
+int lastMouseX = 0;
+int lastMouseY = 0;
 
 
 struct Vec3 {
@@ -35,6 +50,63 @@ struct RobotState {
 
 
 RobotState robots[3];
+
+
+void mouseButton(int button, int state, int x, int y) {
+    if (button == GLUT_LEFT_BUTTON) {
+        if (state == GLUT_DOWN) {
+            mouseDragging = true;
+            lastMouseX = x;
+            lastMouseY = y;
+
+            cameraMode = 4; // switch to orbit camera
+        } else {
+            mouseDragging = false;
+        }
+    }
+
+    // Mouse wheel zoom
+    if (button == 3) {
+        cameraDistance -= 0.5f;
+        if (cameraDistance < 4.0f) {
+            cameraDistance = 4.0f;
+        }
+    }
+
+    if (button == 4) {
+        cameraDistance += 0.5f;
+        if (cameraDistance > 30.0f) {
+            cameraDistance = 30.0f;
+        }
+    }
+
+    glutPostRedisplay();
+}
+
+
+void mouseMotion(int x, int y) {
+    if (mouseDragging) {
+        int dx = x - lastMouseX;
+        int dy = y - lastMouseY;
+
+        cameraAngleY += dx * 0.4f;
+        cameraAngleX += dy * 0.4f;
+
+        if (cameraAngleX > 85.0f) {
+            cameraAngleX = 85.0f;
+        }
+
+        if (cameraAngleX < -85.0f) {
+            cameraAngleX = -85.0f;
+        }
+
+        lastMouseX = x;
+        lastMouseY = y;
+
+        cameraMode = 4; // orbit mode
+        glutPostRedisplay();
+    }
+}
 
 
 float surfaceHeight(float x, float z) {
@@ -66,6 +138,90 @@ Vec3 evaluatePath(int pathId, float t) {
     p.y = surfaceHeight(p.x, p.z) + 1.225f;
 
     return p;
+}
+
+
+void createCheckerTexture() {
+    const int size = 64;
+    GLubyte image[size][size][3];
+
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            int checker = ((i / 8) + (j / 8)) % 2;
+
+            if (checker) {
+                image[i][j][0] = 80;
+                image[i][j][1] = 160;
+                image[i][j][2] = 80;
+            } else {
+                image[i][j][0] = 40;
+                image[i][j][1] = 110;
+                image[i][j][2] = 40;
+            }
+        }
+    }
+
+    glGenTextures(1, &terrainTexture);
+    glBindTexture(GL_TEXTURE_2D, terrainTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGB,
+        size,
+        size,
+        0,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        image
+    );
+}
+
+
+void createRobotTexture() {
+    const int size = 64;
+    GLubyte image[size][size][3];
+
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            int stripe = (j / 8) % 2;
+
+            if (stripe) {
+                image[i][j][0] = 220;
+                image[i][j][1] = 40;
+                image[i][j][2] = 40;
+            } else {
+                image[i][j][0] = 240;
+                image[i][j][1] = 240;
+                image[i][j][2] = 240;
+            }
+        }
+    }
+
+    glGenTextures(1, &robotTexture);
+    glBindTexture(GL_TEXTURE_2D, robotTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGB,
+        size,
+        size,
+        0,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        image
+    );
 }
 
 
@@ -104,7 +260,11 @@ void init() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
 
-    glDisable(GL_LIGHTING);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    glEnable(GL_COLOR_MATERIAL);
+
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
     glShadeModel(GL_SMOOTH);
 
@@ -114,12 +274,23 @@ void init() {
     robots[i].position = evaluatePath(i, robots[i].pathT);
     }
 
+    createCheckerTexture();
+    createRobotTexture();
+
     std::cout << "Controls:\n";
     std::cout << "ESC - exit\n";
     std::cout << "W - start/stop animation\n";
     std::cout << "+ / - change speed\n";
     std::cout << "I - enable/disable interactions\n";
-}
+    std::cout << "L - cycle lighting mode\n";std::cout << "1 - front camera view\n";
+    std::cout << "2 - side camera view\n";
+    std::cout << "3 - top camera view\n";
+    std::cout << "4 - orbit camera view\n";
+    std::cout << "P - perspective projection\n";
+    std::cout << "O - orthographic projection\n";
+    std::cout << "R - reset scene\n";
+    std::cout << "T - toggle textures\n";
+    }
 
 
 void setupProjection() {
@@ -127,7 +298,22 @@ void setupProjection() {
     glLoadIdentity();
 
     float aspect = (float)windowWidth / (float)windowHeight;
-    gluPerspective(60.0, aspect, 0.1, 100.0);
+
+    if (usePerspective) {
+        gluPerspective(60.0, aspect, 0.1, 100.0);
+    } else {
+        float viewSize = 8.0f;
+
+        if (aspect >= 1.0f) {
+            glOrtho(-viewSize * aspect, viewSize * aspect,
+                    -viewSize, viewSize,
+                    -100.0, 100.0);
+        } else {
+            glOrtho(-viewSize, viewSize,
+                    -viewSize / aspect, viewSize / aspect,
+                    -100.0, 100.0);
+        }
+    }
 
     glMatrixMode(GL_MODELVIEW);
 }
@@ -136,22 +322,88 @@ void setupProjection() {
 void setupCamera() {
     glLoadIdentity();
 
-    float radX = cameraAngleX * 3.14159f / 180.0f;
-    float radY = cameraAngleY * 3.14159f / 180.0f;
+    if (cameraMode == 1) {
+        // Front view
+        gluLookAt(
+            0.0, 4.0, 12.0,
+            0.0, 0.5, 0.0,
+            0.0, 1.0, 0.0
+        );
+    }
+    else if (cameraMode == 2) {
+        // Side view
+        gluLookAt(
+            12.0, 4.0, 0.0,
+            0.0, 0.5, 0.0,
+            0.0, 1.0, 0.0
+        );
+    }
+    else if (cameraMode == 3) {
+        // Top / isometric view
+        gluLookAt(
+            0.0, 13.0, 0.1,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, -1.0
+        );
+    }
+    else {
+        // Orbit/free view
+        float radX = cameraAngleX * 3.14159f / 180.0f;
+        float radY = cameraAngleY * 3.14159f / 180.0f;
 
-    float camX = cameraDistance * cos(radX) * sin(radY);
-    float camY = cameraDistance * sin(radX);
-    float camZ = cameraDistance * cos(radX) * cos(radY);
+        float camX = cameraDistance * cos(radX) * sin(radY);
+        float camY = cameraDistance * sin(radX);
+        float camZ = cameraDistance * cos(radX) * cos(radY);
 
-    gluLookAt(
-        camX, camY, camZ,
-        0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0
-    );
+        gluLookAt(
+            camX, camY, camZ,
+            0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0
+        );
+    }
 }
 
 
-void setupLighting(int mode);
+void setupLighting(int mode) {
+    if (!lightingEnabled) {
+        glDisable(GL_LIGHTING);
+        return;
+    }
+
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+
+    GLfloat ambient[] = {0.25f, 0.25f, 0.25f, 1.0f};
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, ambient);
+
+    if (mode == 0) {
+        // Mode 0: directional sunlight
+        GLfloat lightPosition[] = {-3.0f, 6.0f, 4.0f, 0.0f};
+        GLfloat diffuse[] = {0.9f, 0.9f, 0.85f, 1.0f};
+        GLfloat specular[] = {0.8f, 0.8f, 0.8f, 1.0f};
+
+        glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
+    }
+    else {
+        // Mode 1: moving point light
+        float x = 4.0f * cosf(animationTime);
+        float z = 4.0f * sinf(animationTime);
+
+        GLfloat lightPosition[] = {x, 5.0f, z, 1.0f};
+        GLfloat diffuse[] = {0.7f, 0.85f, 1.0f, 1.0f};
+        GLfloat specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
+
+        glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
+        glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.04f);
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.01f);
+    }
+}
 
 
 Vec3 surfaceNormal(float x, float z) {
@@ -218,15 +470,27 @@ void drawUnitCube(float sx, float sy, float sz) {
 
 
 void setMatteMaterial() {
-    // Temporary placeholder
+    GLfloat specular[] = {0.05f, 0.05f, 0.05f, 1.0f};
+    GLfloat shininess[] = {5.0f};
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, shininess);
 }
 
 void setPlasticMaterial() {
-    // Temporary placeholder
+    GLfloat specular[] = {0.35f, 0.35f, 0.35f, 1.0f};
+    GLfloat shininess[] = {35.0f};
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, shininess);
 }
 
 void setShinyMaterial() {
-    // Temporary placeholder
+    GLfloat specular[] = {0.9f, 0.9f, 0.9f, 1.0f};
+    GLfloat shininess[] = {90.0f};
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, shininess);
 }
 
 
@@ -331,8 +595,19 @@ void drawHead()
 void drawTorso()
 {
     setPlasticMaterial();
-    glColor3f(0.25f, 0.45f, 0.85f);
+
+    if (texturesEnabled) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, robotTexture);
+        glColor3f(1.0f, 1.0f, 1.0f);
+    } else {
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.25f, 0.45f, 0.85f);
+    }
+
     drawUnitCube(2.2f, 3.0f, 1.2f);
+
+    glDisable(GL_TEXTURE_2D);
 }
 
 
@@ -395,7 +670,15 @@ void drawCurvedSurface() {
     int samples = 50;
     float step = size / samples;
 
-    glColor3f(0.25f, 0.65f, 0.35f);
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    if (texturesEnabled) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, terrainTexture);
+    } else {
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.25f, 0.65f, 0.35f);
+    }
 
     for (int i = 0; i < samples; i++) {
         float x1 = -size / 2.0f + i * step;
@@ -409,16 +692,20 @@ void drawCurvedSurface() {
             float y1 = surfaceHeight(x1, z);
             Vec3 n1 = surfaceNormal(x1, z);
             glNormal3f(n1.x, n1.y, n1.z);
+            glTexCoord2f((x1 + size / 2.0f) * 0.25f, (z + size / 2.0f) * 0.25f);
             glVertex3f(x1, y1, z);
 
             float y2 = surfaceHeight(x2, z);
             Vec3 n2 = surfaceNormal(x2, z);
             glNormal3f(n2.x, n2.y, n2.z);
+            glTexCoord2f((x2 + size / 2.0f) * 0.25f, (z + size / 2.0f) * 0.25f);
             glVertex3f(x2, y2, z);
         }
 
         glEnd();
     }
+
+    glDisable(GL_TEXTURE_2D);
 }
 
 
@@ -435,7 +722,7 @@ void drawRobot(const RobotState& robot)
 
     glPushMatrix();
 
-    glTranslatef(robot.position.x, robot.position.y, robot.position.z);
+    glTranslatef(robot.position.x, robot.position.y + 0.75f, robot.position.z);
     glRotatef(robot.heading, 0.0f, 1.0f, 0.0f);
 
     // Scale the old lab robot smaller so it fits the terrain
@@ -568,9 +855,16 @@ void handleRobotInteractions() {
     }
 
     // Extra safety: avoid Robot 0 and Robot 2 overlapping
-    if (d02 < 2.2f) {
-    robots[0].speed = 0.0f;
-    robots[2].speed = 1.2f;
+    // Interaction 3: Robot 0 and Robot 2 greet
+    if (d02 < 2.4f) {
+        robots[0].waving = true;
+        robots[2].waving = true;
+
+        robots[0].speed = 0.0f;
+        robots[2].speed = 1.2f;
+
+        robots[0].behaviorState = 3;
+        robots[2].behaviorState = 3;
     }
 }
 
@@ -623,12 +917,35 @@ void drawAxes() {
 }
 
 
-void drawText(float x, float y, float z, const char* text) {
+void drawSpeechText(float x, float y, float z, const char* text) {
+    glDisable(GL_LIGHTING);
+
+    glColor3f(1.0f, 1.0f, 1.0f);
     glRasterPos3f(x, y, z);
 
     while (*text) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *text);
         text++;
+    }
+
+    if (lightingEnabled) {
+        glEnable(GL_LIGHTING);
+    }
+}
+
+
+void drawText(float x, float y, float z, const char* text) {
+    glDisable(GL_LIGHTING);
+
+    glRasterPos3f(x, y, z);
+
+    while (*text) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *text);
+        text++;
+    }
+
+    if (lightingEnabled) {
+        glEnable(GL_LIGHTING);
     }
 }
 
@@ -662,7 +979,41 @@ void drawScene() {
         drawText(tx, ty, tz, "Robot 1");
     else
         drawText(tx, ty, tz, "Robot 2");
+
+    if (robots[i].behaviorState == 1) {
+    float sx = robots[i].position.x;
+    float sy = robots[i].position.y + 3.25f + i * 0.25f;
+    float sz = robots[i].position.z;
+
+    if (i == 0)
+        drawSpeechText(sx, sy, sz, "Hi, Robot 1!");
+    else if (i == 1)
+        drawSpeechText(sx, sy, sz, "Hi, Robot 0!");
+}
+
+if (robots[i].behaviorState == 2) {
+    float sx = robots[i].position.x;
+    float sy = robots[i].position.y + 3.25f + i * 0.25f;
+    float sz = robots[i].position.z;
+
+    if (i == 1)
+        drawSpeechText(sx, sy, sz, "Hi, Robot 2!");
+    else if (i == 2)
+        drawSpeechText(sx, sy, sz, "Hi, Robot 1!");
+}
+
+    if (robots[i].behaviorState == 3) {
+        float sx = robots[i].position.x;
+        float sy = robots[i].position.y + 3.25f + i * 0.25f;
+        float sz = robots[i].position.z;
+
+        if (i == 0)
+            drawSpeechText(sx, sy, sz, "Hi, Robot 2!");
+        else if (i == 2)
+            drawSpeechText(sx, sy, sz, "Hi, Robot 0!");
     }
+    }
+
 }
 
 
@@ -671,6 +1022,8 @@ void display() {
 
     setupProjection();
     setupCamera();
+
+    setupLighting(lightingMode);
 
     drawScene();
 
@@ -712,7 +1065,60 @@ void keyboard(unsigned char key, int x, int y) {
         case 'I':
             interactionsEnabled = !interactionsEnabled;
             break;
-    }
+
+        case 'l':
+        case 'L':
+            lightingMode = (lightingMode + 1) % 2;
+            break;
+
+        case '1':
+            cameraMode = 1;
+            break;
+
+        case '2':
+            cameraMode = 2;
+            break;
+
+        case '3':
+            cameraMode = 3;
+            break;
+
+        case '4':
+            cameraMode = 4;
+            break;
+
+        case 'p':
+        case 'P':
+            usePerspective = true;
+            break;
+
+        case 'o':
+        case 'O':
+            usePerspective = false;
+            break;
+
+        case 'r':
+        case 'R':
+            cameraMode = 4;
+            usePerspective = true;
+            cameraDistance = 12.0f;
+            cameraAngleX = 25.0f;
+            cameraAngleY = -35.0f;
+            animationTime = 0.0f;
+
+            robots[0].pathT = 0.0f;
+            robots[1].pathT = 0.5f;
+            robots[2].pathT = 0.75f;
+
+            for (int i = 0; i < 3; i++) {
+                robots[i].position = evaluatePath(i, robots[i].pathT);
+            }
+            break;
+        case 't':
+        case 'T':
+            texturesEnabled = !texturesEnabled;
+            break;
+        }
 
     glutPostRedisplay();
 }
@@ -743,6 +1149,8 @@ int main(int argc, char** argv) {
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
+    glutMouseFunc(mouseButton);
+    glutMotionFunc(mouseMotion);
     glutTimerFunc(16, timer, 0);
 
     glutMainLoop();
