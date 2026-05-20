@@ -1142,7 +1142,7 @@ int main(int argc, char** argv) {
 
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(windowWidth, windowHeight);
-    glutCreateWindow("Robot Interaction Arena - Milestone 1");
+    glutCreateWindow("Robot Interaction Arena - Sandru Luca");
 
     init();
 
